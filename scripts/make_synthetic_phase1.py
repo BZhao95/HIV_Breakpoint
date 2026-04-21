@@ -52,7 +52,7 @@ def create_safe_2seg(p1, p2, context=500, step=10):
         left_len = len(s1[s1s:a].replace("-", ""))
         right_len = len(s2[a:s2e].replace("-",""))
 
-        if left_len >= content and right_len >= context:
+        if left_len >= context and right_len >= context:
             candidates.append(a)
     if not candidates:
         return None
@@ -69,6 +69,78 @@ def create_safe_2seg(p1, p2, context=500, step=10):
     
     return chim, bp, a
 
+## updating 2 breakpoints (3 parents)
+def create_safe_3seg(p1,p2,p3, context=500, min_seg_len=800, step=10):
+    s1 = str(p1.seq)
+    s2 = str(p2.seq)
+    s3 = str(p3.seq)
+
+    if len(s1) !=len(s2) or len(s1) != len(s3) or len(s2)!=len(s3):
+        return None
+    
+    s1s, s1e = get_content_range(s1)
+    s2s, s2e = get_content_range(s2)
+    s3s, s3e = get_content_range(s3)
+
+    if None in (s1, s2, s3):
+        return None
+    
+    ov_s = max(s1s, s2s, s3s)
+    ov_e = min(s1e, s2e, s3e)
+
+    if ov_e - ov_s < 500: 
+        return None
+    
+    a1_l = [] #to store all possible a1 positions
+
+    for a1 in range(ov_s+100, ov_e-100, step):
+        if aln_to_real(s1, a1) >= context:
+            a1_l.append(a1)
+    if not a1_l:
+        continue
+
+    #shuffle the orignal list, otherwise each list starting from the same order
+    random.shuffle(a1)
+
+    for a1 in a1_l[:200]:
+        a2_l = []
+        for a2 in range(ov_s+100, ov_e-100, step):
+            bp1 = aln_to_real(s1, a1)
+            bp2 = bp1 + len((s2[a1:a2]).replace("-",""))
+            #bp2 = len((s1[:a1] + s2[a1:a2]).replace("-","")) should be same
+
+            seg1 = bp1
+            seg2 = bp2 - bp1
+
+            #check the seg3 length
+            if seg1 < min_seg_len or seg2 < min_seg_len:
+                continue
+
+            seg3 = aln_to_real(s3, s3e) - aln_to_real(s3, a2)
+            if seg3 < context:
+                continue
+
+            a2_l.append(a2)
+        if not a2_l:
+            continue
+
+        a2 = random.shuffle(a2_l)
+        chim_aln = s1[:a1]+s2[a1:a2]+s2[a2:]
+        chim = chim_aln.replace("-","")
+
+        bp1 = aln_to_real(s1,a1)
+        bp2 = bp1+len((s2[a1:a2]).replace("-",""))
+
+        if not 0 <bp1 < bp2 < len(chim):
+            continue
+
+        if (len(chim) - bp2) < min_seg_len:
+            continue
+
+        return chim, bp1, bp2, a1, a2
+    return None
+
+        
 ## build pure parent pool
 def build_pure_pool(aligned_fasta):
     pool = [] 
@@ -125,7 +197,7 @@ def main():
 
             recs.append(SeqRecord(Seq(chim), id=sid, description=""))
 
-            meta,append({
+            meta.append({
                 "ID": sid,
                 "Seg1": st1,
                 "Seg2": st2,
@@ -137,7 +209,7 @@ def main():
             i += 1
         
         fasta_output = os.path.join(args.out_dir, f"{tag}.fasta")
-        csv_out = os.path.join(args.out_dir, f"{tag}"_label.csv)
+        csv_out = os.path.join(args.out_dir, f"{tag}_label.csv")
 
         SeqIO.write(recs, fasta_output, "fasta")
         pd.DataFrame(meta).to_csv(csv_out, index=False)
@@ -145,7 +217,7 @@ def main():
         print(f"{fasta_output} saved")
         print(f"{csv_out} saved.")
 
-    gen_split("train", args_n_train)
+    gen_split("train", args.n_train)
     gen_split("val", args.n_val)
     gen_split("test", args.n_test)
 
