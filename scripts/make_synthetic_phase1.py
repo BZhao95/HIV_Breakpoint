@@ -8,6 +8,9 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
+# update for 2 breakpoints path e.g. A|B|C, A|B|A
+from itertools import product
+
 PURE_SUBTYPES = {"A", "B","C","D","E","F1","F2","G","H","J","K","L"}
 
 def parse_subtype(rec_id: str) ->str:
@@ -69,7 +72,23 @@ def create_safe_2seg(p1, p2, context=500, step=10):
     
     return chim, bp, a
 
-## updating 2 breakpoints (3 parents)
+#generate all possible paths for simulating 2-breakpoint genomes
+def get_valid_3seg_paths(n_parents:int):
+    """
+    n_parents = 2: A|B|A, B|A|B
+    n_parents = 3: A|B|A, B|A|B, A|B|C, A|C|A...
+    """
+
+    if n_parents <2:
+        raise ValueError("N_parents have to be at least 2")
+    
+    paths = []
+    for path in product(range(n_parents), repeat=3):
+        if path[0] != path[1] and path[1] != path[2]:
+            paths.append(path)
+    return paths
+
+## updating 2 breakpoints (3 parents) - allow one parent genome being reused
 def create_safe_3seg(p1,p2,p3, context=500, min_seg_len=800, step=10):
     s1 = str(p1.seq)
     s2 = str(p2.seq)
@@ -97,7 +116,7 @@ def create_safe_3seg(p1,p2,p3, context=500, min_seg_len=800, step=10):
         if aln_to_real(s1, a1) >= context:
             a1_l.append(a1)
     if not a1_l:
-        continue
+        return None
 
     #shuffle the orignal list, otherwise each list starting from the same order
     random.shuffle(a1)
